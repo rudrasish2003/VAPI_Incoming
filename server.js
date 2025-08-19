@@ -1,11 +1,5 @@
 // server.js
-const express = require("express");
-const bodyParser = require("body-parser");
 
-const app = express();
-app.use(bodyParser.json());
-
-// 🗄️ Demo DB (replace with your real DB lookups)
 const progressDB = {
   "+918777315232": {
     currentQuestion: 3,
@@ -14,42 +8,87 @@ const progressDB = {
   }
 };
 
-// 🔹 Incoming Call Webhook for Vapi
-app.post("/vapi/incoming", async (req, res) => {
-  const event = req.body;
-  const callerNumber = event.customer.number;
+ const express = require("express");
+const axios = require("axios");
+require("dotenv").config();
 
-  console.log("Incoming call from:", callerNumber);
+const app = express();
+app.use(express.json());
 
-  // Lookup candidate progress from DB
-  const progress = progressDB[callerNumber];
+const VAPI_API_KEY = process.env.VAPI_API_KEY;
+const ASSISTANT_ID = process.env.ASSISTANT_ID;
 
-  if (!progress) {
-    // First-time caller → start fresh
-    return res.json({
-      assistantOverrides: {
-        firstMessage: "Hi, thanks for calling. Let's start your interview now!",
-        prompt: "You are an interview bot. Start interviewing the candidate from Question 1."
-      },
-      metadata: { resumeFrom: "Q1" }
-    });
+// Demo in-memory DB
+const db = {
+  "+918777315232": {
+    currentQuestion: 3,
+    lastTranscript: "I was telling you about my React projects.",
+    updatedAt: new Date()
   }
+};
 
-  // Returning candidate → resume with context
-  return res.json({
-    assistantOverrides: {
-      firstMessage: `Welcome back! Let's continue from Question ${progress.currentQuestion}.`,
-      prompt: `You are an AI interview assistant. 
-The candidate previously said: "${progress.lastTranscript}". 
-Continue smoothly from Question ${progress.currentQuestion}, 
-do not repeat previous questions, and keep the conversation natural.`
-    },
-    metadata: {
-      resumeFrom: `Q${progress.currentQuestion}`,
-      lastTranscript: progress.lastTranscript || "No transcript available"
+
+// Function to get user context from DB
+function getUserContext(phoneNumber) {
+  if (db.calls[phoneNumber]) {
+    return db.calls[phoneNumber].map(r => r.context).join("\n");
+  }
+  return null;
+}
+
+// Function to save call record
+function saveCall(phoneNumber, callId, context) {
+  if (!db.calls[phoneNumber]) {
+    db.calls[phoneNumber] = [];
+  }
+  db.calls[phoneNumber].push({ callId, context });
+}
+
+// Endpoint for incoming Twilio call
+app.post("/incoming-call", async (req, res) => {
+  try {
+    const { From, To } = req.body; // Twilio sends From (caller), To (your Twilio num)
+
+    console.log("Incoming call from:", From);
+
+    // Fetch user context if any
+    const userContext = getUserContext(From);
+
+    // Base system prompt
+    let systemPrompt = "You are a helpful assistant for handling customer calls.";
+    if (userContext) {
+      systemPrompt += `\n\nHere is the caller's previous context:\n${userContext}`;
     }
-  });
+
+    // Create VAPI call
+    const response = await axios.post(
+      "https://api.vapi.ai/call",
+      {
+        assistantId: ASSISTANT_ID,
+        phoneNumberId: To, // your Twilio number imported in VAPI
+        customer: { number: From },
+        assistantOverrides: {
+          systemPrompt, // 👈 modified system prompt
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${VAPI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
+
+    // Save record in DB (you can replace with real DB insert)
+    saveCall(From, response.data.id, "Demo context for this call");
+
+    res.status(200).json({ success: true, callId: response.data.id });
+  } catch (err) {
+    console.error("Error creating call:", err.response?.data || err.message);
+    res.status(500).json({ error: "Failed to create VAPI call" });
+  }
 });
 
-// Start server
-app.listen(3000, () => console.log("🚀 Server running on port 3000"));
+app.listen(3000, () => {
+  console.log("Server running on port 3000");
+});
