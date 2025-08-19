@@ -14,9 +14,9 @@ app.post("/create-call", async (req, res) => {
   try {
     const { phoneNumber, customContext } = req.body;
 
-    if (!phoneNumber || !phoneNumber.startsWith("+")) {
-      return res.status(400).json({ error: "Phone number must be in E.164 format (e.g., +918777315232)" });
-    }
+    // if (!phoneNumber || !phoneNumber.startsWith("+")) {
+    //   return res.status(400).json({ error: "Phone number must be in E.164 format (e.g., +918777315232)" });
+    // }
 
     const response = await axios.post(
       "https://api.vapi.ai/call",
