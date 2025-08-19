@@ -8,15 +8,15 @@ app.use(bodyParser.urlencoded({ extended: false }));
 
 app.post("/inbound-call", async (req, res) => {
   const callerNumber = req.body.From; // Caller ID from Twilio
-  console.log("Incoming call from:", callerNumber);
+  console.log("📞 Incoming call from:", callerNumber);
 
-  // Decide dynamic system prompt
-  let systemPrompt = "Default system prompt for unknown callers.";
-  if (callerNumber === "+918777315232") {
-    systemPrompt = "Hi Rudrasish, you’re connected to your personalized AI assistant.";
-  } else if (callerNumber === "+919999999999") {
-    systemPrompt = "Hello special user, this AI will answer based on context B.";
-  }
+  // Map callers to dynamic system prompts
+  const promptMap = {
+    "+918777315232": "Hi Rudrasish, you’re connected to your personalized AI assistant.",
+    "+919999999999": "Hello special user, this AI will answer based on context B.",
+  };
+
+  const systemPrompt = promptMap[callerNumber] || "Default system prompt for unknown callers.";
 
   try {
     // Create a call in Vapi with assistant overrides
@@ -29,9 +29,9 @@ app.post("/inbound-call", async (req, res) => {
           model: {
             provider: "openai",
             model: "gpt-4o-mini",
-            systemPrompt: systemPrompt
-          }
-        }
+            systemPrompt: systemPrompt,
+          },
+        },
       },
       {
         headers: {
@@ -40,9 +40,9 @@ app.post("/inbound-call", async (req, res) => {
       }
     );
 
-    console.log("Vapi Call created:", response.data);
+    console.log("✅ Vapi Call created:", response.data);
 
-    // Tell Twilio to connect the call to Vapi (Vapi handles bridging automatically)
+    // Return valid TwiML to Twilio
     res.set("Content-Type", "text/xml");
     res.send(`
       <Response>
@@ -50,9 +50,18 @@ app.post("/inbound-call", async (req, res) => {
       </Response>
     `);
   } catch (error) {
-    console.error("Error creating Vapi call:", error.response?.data || error.message);
-    res.status(500).send("Error creating Vapi call");
+    console.error("❌ Error creating Vapi call:", error.response?.data || error.message);
+
+    // Always return valid TwiML, even on error
+    res.set("Content-Type", "text/xml");
+    res.send(`
+      <Response>
+        <Say>Sorry, an error occurred while connecting your call. Please try again later.</Say>
+        <Hangup/>
+      </Response>
+    `);
   }
 });
 
-app.listen(3000, () => console.log("Server running on port 3000"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
