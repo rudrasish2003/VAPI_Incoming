@@ -10,13 +10,13 @@ app.post("/inbound-call", async (req, res) => {
   const callerNumber = req.body.From; // Caller ID from Twilio
   console.log("📞 Incoming call from:", callerNumber);
 
-  // Map callers to dynamic system prompts
+  // Map callers to dynamic instructions
   const promptMap = {
     "+918777315232": "Hi Rudrasish, you’re connected to your personalized AI assistant.",
     "+919999999999": "Hello special user, this AI will answer based on context B.",
   };
 
-  const systemPrompt = promptMap[callerNumber] || "Default system prompt for unknown callers.";
+  const instructions = promptMap[callerNumber] || "Default system prompt for unknown callers.";
 
   try {
     // Create a call in Vapi with assistant overrides
@@ -25,11 +25,15 @@ app.post("/inbound-call", async (req, res) => {
       {
         assistantId: process.env.VAPI_ASSISTANT_ID,
         phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
+        customer: {
+          number: callerNumber,
+          name: "Inbound Caller", // optional, you can personalize per number
+        },
         assistantOverrides: {
           model: {
             provider: "openai",
             model: "gpt-4o-mini",
-            systemPrompt: systemPrompt,
+            instructions: instructions,
           },
         },
       },
@@ -50,7 +54,11 @@ app.post("/inbound-call", async (req, res) => {
       </Response>
     `);
   } catch (error) {
-    console.error("❌ Error creating Vapi call:", error.response?.data || error.message);
+    console.error("❌ Error creating Vapi call:", {
+      status: error.response?.status,
+      data: error.response?.data,
+      message: error.message,
+    });
 
     // Always return valid TwiML, even on error
     res.set("Content-Type", "text/xml");
