@@ -35,7 +35,16 @@ app.post("/create-call", async (req, res) => {
         number: toNumber, // ✅ Must be E.164 format (+91...)
       },
       assistantId: ASSISTANT_ID,
-      systemPrompt: systemPrompt // ✅ Directly pass systemPrompt
+      assistantOverrides: {
+        model: {
+         messages: [
+           {
+          role: "system",
+          content: systemPrompt
+          }
+       ]
+      }
+     } // ✅ Directly pass systemPrompt
     };
 
     const response = await axios.post("https://api.vapi.ai/call", payload, {
