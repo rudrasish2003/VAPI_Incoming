@@ -1,14 +1,7 @@
-// server.js
-const express = require("express");
-const axios = require("axios");
-require("dotenv").config();
+import express from "express";
 
 const app = express();
 app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-const VAPI_API_KEY = process.env.VAPI_API_KEY;
-const ASSISTANT_ID = process.env.ASSISTANT_ID;
 
 // Example: mapping numbers to different prompts
 const numberPrompts = {
@@ -17,54 +10,36 @@ const numberPrompts = {
   "+911234567890": "You are handling university-related calls for Rudrasish."
 };
 
-// Endpoint to create call
-app.post("/create-call", async (req, res) => {
-  try {
-    const fromNumber = req.body.From;
-    const toNumber = req.body.To || "+918013671142"; // default test number
-
-    if (!fromNumber) {
-      return res.status(400).json({ error: "Missing 'From' number" });
-    }
-
-    // Get system prompt based on caller
-    const systemPrompt = numberPrompts[fromNumber] || "You are a default helpful assistant.";
-
-     
-   const payload = {
-  assistantId: ASSISTANT_ID,
-  phoneNumberId: "c2a11f11-8a2e-4779-9303-6d8e5c5c9bd9",
-  customer: {
-    number: "+918013671142"
-  },
-  assistantOverrides: {
-    model: {
-      provider: "openai",
-      model: "gpt-3.5-turbo",
-      messages: [
-        {
-          role: "system",
-          content: systemPrompt
-        }
-      ]
-    }
+app.post("/webhooks/vapi", async (req, res) => {
+  const messageType = req.body?.message?.type;
+  if (messageType !== "assistant-request") {
+    return res.sendStatus(204);
   }
-};
-    const response = await axios.post("https://api.vapi.ai/call", payload, {
-      headers: {
-        Authorization: `Bearer ${VAPI_API_KEY}`,
-        "Content-Type": "application/json"
+
+  const incomingNumber = req.body?.call?.from?.phoneNumber;
+  const prompt = numberPrompts[incomingNumber] || "You are a default helpful assistant.";
+
+  // Return a transient assistant configuration
+  return res.json({
+    assistant: {
+      name: "Inbound Receptionist",
+      firstMessage: "Hi there! How can I help you today?",
+      model: {
+        provider: "openai",
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: prompt
+          }
+        ]
+      },
+      voice: {
+        provider: "11labs",
+        voiceId: "shimmer"
       }
-    });
-
-    res.json(response.data);
-  } catch (error) {
-    console.error("Error creating Vapi call:", error.response?.data || error.message);
-    res.status(500).json({ error: error.response?.data || error.message });
-  }
+    }
+  });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
-});
+app.listen(3000, () => console.log("Server listening on port 3000"));
