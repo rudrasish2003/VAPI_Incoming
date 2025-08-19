@@ -1,128 +1,55 @@
-// const express = require('express');
-// const axios = require('axios');
-// require('dotenv').config();
-
-// const app = express();
-// app.use(express.json());
-
-// const VAPI_API_KEY = process.env.VAPI_API_KEY;
-// const ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
-
-// const VAPI_BASE_URL = "https://api.vapi.ai"; // Correct base URL
-
-// app.post('/set-system-prompt', async (req, res) => {
-//   const { systemPrompt } = req.body;
-
-//   if (!systemPrompt) {
-//     return res.status(400).json({ error: 'System prompt is required' });
-//   }
-
-//   try {
-//     const response = await axios.patch(
-//   `${VAPI_BASE_URL}/assistant/${ASSISTANT_ID}`,
-//   {
-//     model: {
-//       provider: "openai",
-//       model: "gpt-4o", // <-- Use a valid model name from the allowed list
-//       messages: [
-//         {
-//           role: "assistant",
-//           content: systemPrompt
-//         }
-//       ]
-//     }
-//   },
-//   {
-//     headers: {
-//       Authorization: `Bearer ${VAPI_API_KEY}`,
-//       'Content-Type': 'application/json',
-//     },
-//   }
-// );
-
-//     return res.status(200).json({ message: 'System prompt updated', data: response.data });
-//   } catch (error) {
-//     console.error(error.response?.data || error.message);
-//     return res.status(500).json({ error: 'Failed to update system prompt' });
-//   }
-// });
-
-// const PORT = process.env.PORT || 3000;
-// app.listen(PORT, () => {
-//   console.log(`✅ Server running on port ${PORT}`);
-// });
-
-const express = require('express');
-const axios = require('axios');
-const { twiml } = require('twilio');
-require('dotenv').config();
+// server.js
+const express = require("express");
+const bodyParser = require("body-parser");
 
 const app = express();
-app.use(express.urlencoded({ extended: true })); // Twilio sends form-encoded data
+app.use(bodyParser.json());
 
-const VAPI_API_KEY = process.env.VAPI_API_KEY;
-const ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
-const VAPI_BASE_URL = "https://api.vapi.ai";
-
-// Base system prompt template
-const BASE_PROMPT = `
-You are a helpful AI voice assistant.
-Always greet the caller politely and provide assistance in a professional tone.
-If you have caller-specific context, use it to personalize your responses.
-`;
-
-// Context mapping per number
-const callerContext = {
-  "+14155550123": "This is John Doe, a premium customer with VIP support.",
-  "+918777315232": "This is Ravi from India, prefer mixing English and Hindi.",
-  "+442071838750": "This is Emily from the UK, use British English tone."
+// 🗄️ Demo DB (replace with your real DB lookups)
+const progressDB = {
+  "+918777315232": {
+    currentQuestion: 3,
+    lastTranscript: "I was telling you about my React projects.",
+    updatedAt: new Date()
+  }
 };
 
-app.post('/incoming-call', async (req, res) => {
-  const caller = req.body.From;
-  console.log(`📞 Incoming call from: ${caller}`);
+// 🔹 Incoming Call Webhook for Vapi
+app.post("/vapi/incoming", async (req, res) => {
+  const event = req.body;
+  const callerNumber = event.customer.number;
 
-  // Get dynamic context
-  const context = callerContext[caller] || `This caller’s number is ${caller}. No extra context available.`;
+  console.log("Incoming call from:", callerNumber);
 
-  // Final system prompt = Base + Context
-  const systemPrompt = `${BASE_PROMPT}\n\nCaller Context: ${context}`;
+  // Lookup candidate progress from DB
+  const progress = progressDB[callerNumber];
 
-  try {
-    // 1. Update Vapi Assistant system prompt
-    await axios.patch(
-      `${VAPI_BASE_URL}/assistant/${ASSISTANT_ID}`,
-      {
-        model: {
-          provider: "openai",
-          model: "gpt-4o",
-          messages: [{ role: "system", content: systemPrompt }]
-        }
+  if (!progress) {
+    // First-time caller → start fresh
+    return res.json({
+      assistantOverrides: {
+        firstMessage: "Hi, thanks for calling. Let's start your interview now!",
+        prompt: "You are an interview bot. Start interviewing the candidate from Question 1."
       },
-      {
-        headers: {
-          Authorization: `Bearer ${VAPI_API_KEY}`,
-          'Content-Type': 'application/json',
-        },
-      }
-    );
-
-    console.log(`✅ Updated system prompt for ${caller}`);
-
-    // 2. Connect call to Vapi via SIP
-    const response = new twiml.VoiceResponse();
-    response.dial().sip(`sip:${ASSISTANT_ID}@sip.vapi.ai`);
-
-    res.type('text/xml');
-    return res.send(response.toString());
-
-  } catch (error) {
-    console.error("❌ Error updating prompt or connecting to Vapi:", error.response?.data || error.message);
-    return res.status(500).send("Internal Server Error");
+      metadata: { resumeFrom: "Q1" }
+    });
   }
+
+  // Returning candidate → resume with context
+  return res.json({
+    assistantOverrides: {
+      firstMessage: `Welcome back! Let's continue from Question ${progress.currentQuestion}.`,
+      prompt: `You are an AI interview assistant. 
+The candidate previously said: "${progress.lastTranscript}". 
+Continue smoothly from Question ${progress.currentQuestion}, 
+do not repeat previous questions, and keep the conversation natural.`
+    },
+    metadata: {
+      resumeFrom: `Q${progress.currentQuestion}`,
+      lastTranscript: progress.lastTranscript || "No transcript available"
+    }
+  });
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
-});
+// Start server
+app.listen(3000, () => console.log("🚀 Server running on port 3000"));
