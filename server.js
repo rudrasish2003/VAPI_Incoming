@@ -1,53 +1,72 @@
-const express = require('express');
-const axios = require('axios');
-require('dotenv').config();
+const express = require("express");
+const axios = require("axios");
+const bodyParser = require("body-parser");
+require("dotenv").config();
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: false })); // Twilio sends x-www-form-urlencoded
+app.use(bodyParser.json());
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
+const VAPI_BASE_URL = "https://api.vapi.ai"; 
 
-const VAPI_BASE_URL = "https://api.vapi.ai"; // Correct base URL
+// Example prompts by caller number
+const promptsByNumber = {
+  "+918777315232": "You are a helpful agent for Customer A.",
+  "+918013671142": "You are a support bot for Customer B.",
+};
 
-app.post('/set-system-prompt', async (req, res) => {
-  const { systemPrompt } = req.body;
+// 🟢 Incoming call webhook (from Twilio)
+app.post("/incoming-call", async (req, res) => {
+  const { From } = req.body; // Caller number from Twilio
 
-  if (!systemPrompt) {
-    return res.status(400).json({ error: 'System prompt is required' });
-  }
+  console.log("📞 Incoming call from:", From);
+
+  // Choose system prompt based on number (default fallback)
+  const systemPrompt =
+    promptsByNumber[From] || `You are assisting caller ${From}.`;
 
   try {
-    const response = await axios.patch(
-  `${VAPI_BASE_URL}/assistant/${ASSISTANT_ID}`,
-  {
-    model: {
-      provider: "openai",
-      model: "gpt-4o", // <-- Use a valid model name from the allowed list
-      messages: [
-        {
-          role: "assistant",
-          content: systemPrompt
-        }
-      ]
-    }
-  },
-  {
-    headers: {
-      Authorization: `Bearer ${VAPI_API_KEY}`,
-      'Content-Type': 'application/json',
-    },
-  }
-);
+    // 1. Update system prompt in Vapi
+    await axios.patch(
+      `${VAPI_BASE_URL}/assistant/${ASSISTANT_ID}`,
+      {
+        model: {
+          provider: "openai",
+          model: "gpt-4o",
+          messages: [{ role: "assistant", content: systemPrompt }],
+        },
+      },
+      {
+        headers: {
+          Authorization: `Bearer ${VAPI_API_KEY}`,
+          "Content-Type": "application/json",
+        },
+      }
+    );
 
-    return res.status(200).json({ message: 'System prompt updated', data: response.data });
-  } catch (error) {
-    console.error(error.response?.data || error.message);
-    return res.status(500).json({ error: 'Failed to update system prompt' });
+    console.log(`✅ Prompt updated for ${From}`);
+
+    // 2. Forward request to Vapi’s inbound endpoint
+    const vapiResponse = await axios.post(
+      `${VAPI_BASE_URL}/twilio/inbound_call`,
+      new URLSearchParams(req.body).toString(), // forward as form-urlencoded
+      {
+        headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      }
+    );
+
+    // 3. Send back TwiML (XML) to Twilio
+    res.set("Content-Type", "text/xml");
+    return res.send(vapiResponse.data);
+  } catch (err) {
+    console.error("❌ Error handling call:", err.response?.data || err.message);
+    return res.status(500).send("Internal Server Error");
   }
 });
 
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`✅ Server running on port ${PORT}`);
+  console.log(`🚀 Proxy server running on port ${PORT}`);
 });
