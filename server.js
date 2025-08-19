@@ -37,6 +37,8 @@ app.post("/create-call", async (req, res) => {
       assistantId: ASSISTANT_ID,
       assistantOverrides: {
         model: {
+          provider: "openai",
+          model: "gpt-3.5-turbo",
          messages: [
            {
           role: "system",
