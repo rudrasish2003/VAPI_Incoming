@@ -7,7 +7,7 @@ const app = express();
 app.use(bodyParser.urlencoded({ extended: false }));
 
 app.post("/inbound-call", async (req, res) => {
-  const callerNumber = req.body.From; // Caller ID from Twilio
+  const callerNumber = req.body.From; // Caller ID from Twilio (already in E.164)
   console.log("📞 Incoming call from:", callerNumber);
 
   // Map callers to dynamic instructions
@@ -16,7 +16,8 @@ app.post("/inbound-call", async (req, res) => {
     "+919999999999": "Hello special user, this AI will answer based on context B.",
   };
 
-  const instructions = promptMap[callerNumber] || "Default system prompt for unknown callers.";
+  const instructions =
+    promptMap[callerNumber] || "Default system prompt for unknown callers.";
 
   try {
     // Create a call in Vapi with assistant overrides
@@ -26,15 +27,11 @@ app.post("/inbound-call", async (req, res) => {
         assistantId: process.env.VAPI_ASSISTANT_ID,
         phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
         customer: {
-          number: callerNumber,
-          name: "Inbound Caller", // optional, you can personalize per number
+          number: callerNumber, // must be valid E.164 (Twilio gives it correctly)
+          name: "Inbound Caller", // optional
         },
         assistantOverrides: {
-          model: {
-            provider: "openai",
-            model: "gpt-4o-mini",
-            instructions: instructions,
-          },
+          instructions: instructions, // ✅ moved here
         },
       },
       {
