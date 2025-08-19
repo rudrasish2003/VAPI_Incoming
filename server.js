@@ -1,94 +1,58 @@
-// server.js
-
-const progressDB = {
-  "+918777315232": {
-    currentQuestion: 3,
-    lastTranscript: "I was telling you about my React projects.",
-    updatedAt: new Date()
-  }
-};
-
- const express = require("express");
+const express = require("express");
 const axios = require("axios");
+const bodyParser = require("body-parser");
 require("dotenv").config();
 
 const app = express();
-app.use(express.json());
+app.use(bodyParser.urlencoded({ extended: false }));
 
-const VAPI_API_KEY = process.env.VAPI_API_KEY;
-const ASSISTANT_ID = process.env.ASSISTANT_ID;
+app.post("/inbound-call", async (req, res) => {
+  const callerNumber = req.body.From; // Caller ID from Twilio
+  console.log("Incoming call from:", callerNumber);
 
-// Demo in-memory DB
-const db = {
-  "+918777315232": {
-    currentQuestion: 3,
-    lastTranscript: "I was telling you about my React projects.",
-    updatedAt: new Date()
+  // Decide dynamic system prompt
+  let systemPrompt = "Default system prompt for unknown callers.";
+  if (callerNumber === "+918777315232") {
+    systemPrompt = "Hi Rudrasish, you’re connected to your personalized AI assistant.";
+  } else if (callerNumber === "+919999999999") {
+    systemPrompt = "Hello special user, this AI will answer based on context B.";
   }
-};
 
-
-// Function to get user context from DB
-function getUserContext(phoneNumber) {
-  if (db.calls[phoneNumber]) {
-    return db.calls[phoneNumber].map(r => r.context).join("\n");
-  }
-  return null;
-}
-
-// Function to save call record
-function saveCall(phoneNumber, callId, context) {
-  if (!db.calls[phoneNumber]) {
-    db.calls[phoneNumber] = [];
-  }
-  db.calls[phoneNumber].push({ callId, context });
-}
-
-// Endpoint for incoming Twilio call
-app.post("/incoming-call", async (req, res) => {
   try {
-    const { From, To } = req.body; // Twilio sends From (caller), To (your Twilio num)
-
-    console.log("Incoming call from:", From);
-
-    // Fetch user context if any
-    const userContext = getUserContext(From);
-
-    // Base system prompt
-    let systemPrompt = "You are a helpful assistant for handling customer calls.";
-    if (userContext) {
-      systemPrompt += `\n\nHere is the caller's previous context:\n${userContext}`;
-    }
-
-    // Create VAPI call
+    // Create a call in Vapi with assistant overrides
     const response = await axios.post(
       "https://api.vapi.ai/call",
       {
-        assistantId: ASSISTANT_ID,
-        phoneNumberId: To, // your Twilio number imported in VAPI
-        customer: { number: From },
+        assistantId: process.env.VAPI_ASSISTANT_ID,
+        phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
         assistantOverrides: {
-          systemPrompt, // 👈 modified system prompt
-        },
+          model: {
+            provider: "openai",
+            model: "gpt-4o-mini",
+            systemPrompt: systemPrompt
+          }
+        }
       },
       {
         headers: {
-          Authorization: `Bearer ${VAPI_API_KEY}`,
-          "Content-Type": "application/json",
+          Authorization: `Bearer ${process.env.VAPI_API_KEY}`,
         },
       }
     );
 
-    // Save record in DB (you can replace with real DB insert)
-    saveCall(From, response.data.id, "Demo context for this call");
+    console.log("Vapi Call created:", response.data);
 
-    res.status(200).json({ success: true, callId: response.data.id });
-  } catch (err) {
-    console.error("Error creating call:", err.response?.data || err.message);
-    res.status(500).json({ error: "Failed to create VAPI call" });
+    // Tell Twilio to connect the call to Vapi (Vapi handles bridging automatically)
+    res.set("Content-Type", "text/xml");
+    res.send(`
+      <Response>
+        <Dial>${process.env.TWILIO_VAPI_NUMBER}</Dial>
+      </Response>
+    `);
+  } catch (error) {
+    console.error("Error creating Vapi call:", error.response?.data || error.message);
+    res.status(500).send("Error creating Vapi call");
   }
 });
 
-app.listen(3000, () => {
-  console.log("Server running on port 3000");
-});
+app.listen(3000, () => console.log("Server running on port 3000"));
