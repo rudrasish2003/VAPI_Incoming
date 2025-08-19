@@ -5,48 +5,54 @@ require("dotenv").config();
 
 const app = express();
 app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const ASSISTANT_ID = process.env.ASSISTANT_ID;
 
-// 📞 Create a call endpoint
+// Example: mapping numbers to different prompts
+const numberPrompts = {
+  "+918013671142": "You are a polite assistant handling calls for Rudrasish Dutta.",
+  "+918777315232": "You are a support bot for Debuggersss team calls.",
+  "+911234567890": "You are handling university-related calls for Rudrasish."
+};
+
+// Endpoint to create call
 app.post("/create-call", async (req, res) => {
   try {
-    const { phoneNumber, customContext } = req.body;
+    const fromNumber = req.body.From;
+    const toNumber = req.body.To || "+918013671142"; // default test number
 
-    // if (!phoneNumber || !phoneNumber.startsWith("+")) {
-    //   return res.status(400).json({ error: "Phone number must be in E.164 format (e.g., +918777315232)" });
-    // }
+    if (!fromNumber) {
+      return res.status(400).json({ error: "Missing 'From' number" });
+    }
 
-    const response = await axios.post(
-      "https://api.vapi.ai/call",
-      {
-        assistantId: ASSISTANT_ID,
-        customer: {
-          number: phoneNumber, // ✅ Must be in E.164 format
-        },
-        assistantOverrides: {
-          // ✅ Use `instructions`, NOT `systemPrompt`
-          instructions: `You are an AI assistant. Context: ${customContext || "default context."}`,
-        },
+    // Get system prompt based on caller
+    const systemPrompt = numberPrompts[fromNumber] || "You are a default helpful assistant.";
+
+    const payload = {
+      customer: {
+        number: toNumber, // ✅ Must be E.164 format (+91...)
       },
-      {
-        headers: {
-          Authorization: `Bearer ${VAPI_API_KEY}`,
-          "Content-Type": "application/json",
-        },
+      assistantId: ASSISTANT_ID,
+      systemPrompt: systemPrompt // ✅ Directly pass systemPrompt
+    };
+
+    const response = await axios.post("https://api.vapi.ai/call", payload, {
+      headers: {
+        Authorization: `Bearer ${VAPI_API_KEY}`,
+        "Content-Type": "application/json"
       }
-    );
+    });
 
     res.json(response.data);
   } catch (error) {
-    console.error("❌ Error creating Vapi call:", error.response?.data || error.message);
+    console.error("Error creating Vapi call:", error.response?.data || error.message);
     res.status(500).json({ error: error.response?.data || error.message });
   }
 });
 
-// 🛠 Start server
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, () => {
-  console.log(`🚀 Server running on port ${PORT}`);
+  console.log(`Server running on http://localhost:${PORT}`);
 });
