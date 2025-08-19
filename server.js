@@ -1,45 +1,53 @@
-import express from "express";
+const express = require('express');
+const axios = require('axios');
+require('dotenv').config();
 
 const app = express();
 app.use(express.json());
 
-// Example: mapping numbers to different prompts
-const numberPrompts = {
-  "+918013671142": "You are a polite assistant handling calls for Rudrasish Dutta.",
-  "+918777315232": "You are a support bot for Debuggersss team calls.",
-  "+911234567890": "You are handling university-related calls for Rudrasish."
-};
+const VAPI_API_KEY = process.env.VAPI_API_KEY;
+const ASSISTANT_ID = process.env.VAPI_ASSISTANT_ID;
 
-app.post("/webhooks/vapi", async (req, res) => {
-  const messageType = req.body?.message?.type;
-  if (messageType !== "assistant-request") {
-    return res.sendStatus(204);
+const VAPI_BASE_URL = "https://api.vapi.ai"; // Correct base URL
+
+app.post('/set-system-prompt', async (req, res) => {
+  const { systemPrompt } = req.body;
+
+  if (!systemPrompt) {
+    return res.status(400).json({ error: 'System prompt is required' });
   }
 
-  const incomingNumber = req.body?.call?.from?.phoneNumber;
-  const prompt = numberPrompts[incomingNumber] || "You are a default helpful assistant.";
-
-  // Return a transient assistant configuration
-  return res.json({
-    assistant: {
-      name: "Inbound Receptionist",
-      firstMessage: "Hi there! How can I help you today?",
-      model: {
-        provider: "openai",
-        model: "gpt-4o",
-        messages: [
-          {
-            role: "system",
-            content: prompt
-          }
-        ]
-      },
-      voice: {
-        provider: "11labs",
-        voiceId: "shimmer"
-      }
+  try {
+    const response = await axios.patch(
+  `${VAPI_BASE_URL}/assistant/${ASSISTANT_ID}`,
+  {
+    model: {
+      provider: "openai",
+      model: "gpt-4o", // <-- Use a valid model name from the allowed list
+      messages: [
+        {
+          role: "assistant",
+          content: systemPrompt
+        }
+      ]
     }
-  });
+  },
+  {
+    headers: {
+      Authorization: `Bearer ${VAPI_API_KEY}`,
+      'Content-Type': 'application/json',
+    },
+  }
+);
+
+    return res.status(200).json({ message: 'System prompt updated', data: response.data });
+  } catch (error) {
+    console.error(error.response?.data || error.message);
+    return res.status(500).json({ error: 'Failed to update system prompt' });
+  }
 });
 
-app.listen(3000, () => console.log("Server listening on port 3000"));
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`✅ Server running on port ${PORT}`);
+});
