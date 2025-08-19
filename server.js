@@ -31,27 +31,25 @@ app.post("/create-call", async (req, res) => {
     const systemPrompt = numberPrompts[fromNumber] || "You are a default helpful assistant.";
 
      
-    const payload = {
-       assistantId: ASSISTANT_ID,
-        phoneNumberId: "c2a11f11-8a2e-4779-9303-6d8e5c5c9b9",
-        customer: {
-        number: "+918013671142"
+   const payload = {
+  assistantId: ASSISTANT_ID,
+  phoneNumberId: "c2a11f11-8a2e-4779-9303-6d8e5c5c9b9",
+  customer: {
+    number: "+918013671142"
   },
-
-      assistantOverrides: {
-        model: {
-          provider: "openai",
-          model: "gpt-3.5-turbo",
-         messages: [
-           {
+  assistantOverrides: {
+    model: {
+      provider: "openai",
+      model: "gpt-3.5-turbo",
+      messages: [
+        {
           role: "system",
           content: systemPrompt
-          }
-       ]
-      }
-     } // ✅ Directly pass systemPrompt
-    };
-
+        }
+      ]
+    }
+  }
+};
     const response = await axios.post("https://api.vapi.ai/call", payload, {
       headers: {
         Authorization: `Bearer ${VAPI_API_KEY}`,
