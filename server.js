@@ -4,28 +4,31 @@ const axios = require("axios");
 require("dotenv").config();
 
 const app = express();
-app.use(express.urlencoded({ extended: true })); // Twilio sends urlencoded
 app.use(express.json());
 
 const VAPI_API_KEY = process.env.VAPI_API_KEY;
 const ASSISTANT_ID = process.env.ASSISTANT_ID;
 
-app.post("/inbound-call", async (req, res) => {
-  const fromNumber = req.body.From; // Caller’s number from Twilio (E.164 format)
-
+// 📞 Create a call endpoint
+app.post("/create-call", async (req, res) => {
   try {
-    // Create a Vapi call
-    const vapiResponse = await axios.post(
+    const { phoneNumber, customContext } = req.body;
+
+    if (!phoneNumber || !phoneNumber.startsWith("+")) {
+      return res.status(400).json({ error: "Phone number must be in E.164 format (e.g., +918777315232)" });
+    }
+
+    const response = await axios.post(
       "https://api.vapi.ai/call",
       {
         assistantId: ASSISTANT_ID,
         customer: {
-          number: fromNumber, // Must be in E.164
+          number: phoneNumber, // ✅ Must be in E.164 format
         },
-        // ✅ override system prompt properly
         assistantOverrides: {
-          systemPrompt: `You are handling a call from ${fromNumber}. Provide custom greeting.`
-        }
+          // ✅ Use `instructions`, NOT `systemPrompt`
+          instructions: `You are an AI assistant. Context: ${customContext || "default context."}`,
+        },
       },
       {
         headers: {
@@ -35,28 +38,15 @@ app.post("/inbound-call", async (req, res) => {
       }
     );
 
-    console.log("✅ Vapi Call Created:", vapiResponse.data);
-
-    // Respond TwiML to connect call
-    res.type("text/xml");
-    res.send(`
-      <Response>
-        <Dial>
-          <Number>${fromNumber}</Number>
-        </Dial>
-      </Response>
-    `);
-
-  } catch (err) {
-    console.error("❌ Error creating Vapi call:", err.response?.data || err.message);
-    res.type("text/xml");
-    res.send(`
-      <Response>
-        <Say>Sorry, an error occurred while connecting your call. Please try again later.</Say>
-        <Hangup/>
-      </Response>
-    `);
+    res.json(response.data);
+  } catch (error) {
+    console.error("❌ Error creating Vapi call:", error.response?.data || error.message);
+    res.status(500).json({ error: error.response?.data || error.message });
   }
 });
 
-app.listen(3000, () => console.log("🚀 Server running on port 3000"));
+// 🛠 Start server
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => {
+  console.log(`🚀 Server running on port ${PORT}`);
+});
