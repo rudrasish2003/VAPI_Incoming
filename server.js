@@ -30,11 +30,14 @@ app.post("/create-call", async (req, res) => {
     // Get system prompt based on caller
     const systemPrompt = numberPrompts[fromNumber] || "You are a default helpful assistant.";
 
+     
     const payload = {
-      customer: {
-        number: toNumber, // ✅ Must be E.164 format (+91...)
-      },
-      assistantId: ASSISTANT_ID,
+       assistantId: ASSISTANT_ID,
+        phoneNumberid: "c2a11f11-8a2e-4779-9303-6d8e5c5c9b9",
+        customer: {
+        number: "+918013671142"
+  },
+
       assistantOverrides: {
         model: {
           provider: "openai",
