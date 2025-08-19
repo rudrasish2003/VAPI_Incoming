@@ -1,64 +1,55 @@
+// server.js
 const express = require("express");
 const axios = require("axios");
-const bodyParser = require("body-parser");
 require("dotenv").config();
 
 const app = express();
-app.use(bodyParser.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: true })); // Twilio sends urlencoded
+app.use(express.json());
+
+const VAPI_API_KEY = process.env.VAPI_API_KEY;
+const ASSISTANT_ID = process.env.ASSISTANT_ID;
 
 app.post("/inbound-call", async (req, res) => {
-  const callerNumber = req.body.From; // Caller ID from Twilio (already in E.164)
-  console.log("📞 Incoming call from:", callerNumber);
-
-  // Map callers to dynamic instructions
-  const promptMap = {
-    "+918777315232": "Hi Rudrasish, you’re connected to your personalized AI assistant.",
-    "+919999999999": "Hello special user, this AI will answer based on context B.",
-  };
-
-  const instructions =
-    promptMap[callerNumber] || "Default system prompt for unknown callers.";
+  const fromNumber = req.body.From; // Caller’s number from Twilio (E.164 format)
 
   try {
-    // Create a call in Vapi with assistant overrides
-    const response = await axios.post(
+    // Create a Vapi call
+    const vapiResponse = await axios.post(
       "https://api.vapi.ai/call",
       {
-        assistantId: process.env.VAPI_ASSISTANT_ID,
-        phoneNumberId: process.env.VAPI_PHONE_NUMBER_ID,
+        assistantId: ASSISTANT_ID,
         customer: {
-          number: callerNumber, // must be valid E.164 (Twilio gives it correctly)
-          name: "Inbound Caller", // optional
+          number: fromNumber, // Must be in E.164
         },
+        // ✅ override system prompt properly
         assistantOverrides: {
-          instructions: instructions, // ✅ moved here
-        },
+          systemPrompt: `You are handling a call from ${fromNumber}. Provide custom greeting.`
+        }
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.VAPI_API_KEY}`,
+          Authorization: `Bearer ${VAPI_API_KEY}`,
+          "Content-Type": "application/json",
         },
       }
     );
 
-    console.log("✅ Vapi Call created:", response.data);
+    console.log("✅ Vapi Call Created:", vapiResponse.data);
 
-    // Return valid TwiML to Twilio
-    res.set("Content-Type", "text/xml");
+    // Respond TwiML to connect call
+    res.type("text/xml");
     res.send(`
       <Response>
-        <Dial>${process.env.TWILIO_VAPI_NUMBER}</Dial>
+        <Dial>
+          <Number>${fromNumber}</Number>
+        </Dial>
       </Response>
     `);
-  } catch (error) {
-    console.error("❌ Error creating Vapi call:", {
-      status: error.response?.status,
-      data: error.response?.data,
-      message: error.message,
-    });
 
-    // Always return valid TwiML, even on error
-    res.set("Content-Type", "text/xml");
+  } catch (err) {
+    console.error("❌ Error creating Vapi call:", err.response?.data || err.message);
+    res.type("text/xml");
     res.send(`
       <Response>
         <Say>Sorry, an error occurred while connecting your call. Please try again later.</Say>
@@ -68,5 +59,4 @@ app.post("/inbound-call", async (req, res) => {
   }
 });
 
-const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log(`🚀 Server running on port ${PORT}`));
+app.listen(3000, () => console.log("🚀 Server running on port 3000"));
